@@ -1,0 +1,134 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HONEST - URL Shortener</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;font-family:Arial,sans-serif;
+ background:#080d19;color:white;
+ min-height:100vh;display:flex;
+ justify-content:center;align-items:center;padding:20px
+}
+.container{width:100%;max-width:520px}
+.logo{text-align:center;font-size:32px;font-weight:900;
+ letter-spacing:3px;color:#60a5fa}
+.tag{text-align:center;color:#9ca3af;margin:10px 0 35px}
+.card{background:#151e30;padding:25px;border-radius:20px;
+ border:1px solid #29364c}
+h2{text-align:center;margin-top:0}
+label{display:block;margin:18px 0 8px;color:#cbd5e1}
+input{
+ width:100%;padding:15px;border-radius:10px;
+ border:1px solid #475569;background:#0b1220;
+ color:white;font-size:15px;outline:none
+}
+input:focus{border-color:#3b82f6}
+button{
+ width:100%;padding:15px;margin-top:20px;
+ background:#2563eb;color:white;border:0;
+ border-radius:10px;font-size:16px;font-weight:bold;
+ cursor:pointer
+}
+button:disabled{opacity:.6}
+.result{display:none;margin-top:20px;padding:15px;
+ background:#0b1220;border-radius:12px;overflow-wrap:anywhere}
+.result a{color:#60a5fa}
+.copy{background:#16a34a;margin-top:12px}
+.note{text-align:center;color:#64748b;font-size:12px;margin-top:25px}
+</style>
+</head>
+<body>
+<div class="container">
+ <div class="logo">HONEST</div>
+ <div class="tag">Short links. Big possibilities.</div>
+
+ <div class="card">
+  <h2>Shorten your URL</h2>
+  <form id="shortForm">
+   <label for="longUrl">Paste your long URL</label>
+   <input id="longUrl" type="url"
+    placeholder="https://example.com/your-long-link"
+    required>
+
+   <label for="alias">Custom alias (optional)</label>
+   <input id="alias" type="text"
+    placeholder="my-link" maxlength="30"
+    pattern="[a-zA-Z0-9_-]+">
+
+   <button id="submitBtn" type="submit">Shorten URL</button>
+  </form>
+
+  <div class="result" id="result">
+   <p>Your short link:</p>
+   <a id="shortLink" href="#" target="_blank"></a>
+   <button class="copy" id="copyBtn" type="button">
+    Copy Link
+   </button>
+  </div>
+  <p id="message" role="status" style="color:#fbbf24"></p>
+ </div>
+ <div class="note">
+  HONEST © 2026 · Simple URL Management
+ </div>
+</div>
+
+<script>
+const form=document.getElementById("shortForm");
+const btn=document.getElementById("submitBtn");
+const message=document.getElementById("message");
+const result=document.getElementById("result");
+const shortLink=document.getElementById("shortLink");
+
+form.addEventListener("submit",async function(e){
+ e.preventDefault();
+ message.textContent="";
+ result.style.display="none";
+
+ const url=document.getElementById("longUrl").value.trim();
+ const alias=document.getElementById("alias").value.trim();
+
+ try{
+  const parsed=new URL(url);
+  if(!["http:","https:"].includes(parsed.protocol))
+   throw new Error("Only HTTP and HTTPS links are allowed.");
+
+  btn.disabled=true;
+  btn.textContent="Creating link...";
+
+  const response=await fetch("/api/shorten",{
+   method:"POST",
+   headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({url,alias})
+  });
+
+  const data=await response.json();
+  if(!response.ok) throw new Error(data.error||"Could not create link.");
+
+  shortLink.href=data.shortUrl;
+  shortLink.textContent=data.shortUrl;
+  result.style.display="block";
+ }catch(err){
+  message.textContent=err.message.includes("Failed to fetch")
+   ?"Server is not connected yet. Complete the backend setup next."
+   :err.message;
+ }finally{
+  btn.disabled=false;
+  btn.textContent="Shorten URL";
+ }
+});
+
+document.getElementById("copyBtn").addEventListener("click",async()=>{
+ try{
+  await navigator.clipboard.writeText(shortLink.href);
+  document.getElementById("copyBtn").textContent="Copied!";
+ }catch(e){
+  message.textContent="Please copy the link manually.";
+ }
+});
+</script>
+</body>
+</html>
