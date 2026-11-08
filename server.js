@@ -8,6 +8,7 @@ const PORT = process.env.PORT || 3000;
 const links = new Map();
 
 app.set("trust proxy", 1);
+app.use(express.json());
 app.use(express.static(__dirname));
 
 app.post("/api/shorten", (req, res) => {
