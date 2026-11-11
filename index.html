@@ -5,6 +5,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HONEST - URL Shortener</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <style>
 *{box-sizing:border-box}
 body{
@@ -61,265 +64,480 @@ button:disabled{opacity:.6}
 .stats{font-size:13px;color:#94a3b8}
 .empty{text-align:center;color:#94a3b8;padding:20px}
 .note{text-align:center;color:#64748b;font-size:12px;margin:25px}
+.hidden{display:none!important}
+.tabs{display:flex;gap:8px;margin-bottom:15px}
+.tabs button{flex:1}
+.active{background:#2563eb}
+#accountStatus{color:#86efac;font-size:14px;overflow-wrap:anywhere}
 </style>
 </head>
+
 <body>
 <div class="container">
 
- <div class="logo">HONEST</div>
- <div class="tag">Short links. Big possibilities.</div>
+<div class="logo">HONEST</div>
+<div class="tag">Short links. Big possibilities.</div>
 
- <div class="card">
-  <h2>Shorten your URL</h2>
+<!-- AUTHENTICATION -->
+<div class="card" id="authCard">
+ <h2 id="authTitle">Welcome to HONEST</h2>
 
-  <form id="shortForm">
-   <label for="longUrl">Paste your long URL</label>
-   <input id="longUrl" type="url"
-    placeholder="https://example.com/your-long-link"
-    required>
-
-   <label for="alias">Custom alias (optional)</label>
-   <input id="alias" type="text"
-    placeholder="my-link" maxlength="30"
-    pattern="[a-zA-Z0-9_-]+">
-
-   <button class="primary" id="submitBtn" type="submit">
-    Shorten URL
-   </button>
-  </form>
-
-  <div class="result" id="result">
-   <p>Your short link:</p>
-   <a id="shortLink" href="#" target="_blank"
-    rel="noopener noreferrer"></a>
-   <button class="copy primary" id="copyBtn" type="button">
-    Copy Link
-   </button>
-  </div>
-
-  <p class="message" id="message" role="status"></p>
+ <div class="tabs" id="authTabs">
+  <button id="loginTab" class="active" type="button">Login</button>
+  <button id="signupTab" class="secondary" type="button">Sign Up</button>
  </div>
 
- <div class="card">
-  <div class="section-title">
-   <h2>Link History</h2>
-   <button class="secondary" id="refreshBtn">Refresh</button>
-  </div>
+ <form id="authForm">
+  <label for="email">Email address</label>
+  <input id="email" type="email"
+   placeholder="you@example.com" required>
 
-  <p class="stats" id="totalLinks">0 saved links</p>
+  <label for="password">Password</label>
+  <input id="password" type="password"
+   placeholder="Enter password" minlength="6" required>
 
-  <div id="historyList">
-   <div class="empty">No links saved yet.</div>
-  </div>
+  <button class="primary" id="authSubmit" type="submit">
+   Login
+  </button>
+ </form>
 
-  <button class="danger primary" id="clearBtn" type="button">
-   Clear Local History
+ <button id="forgotBtn" class="secondary primary" type="button">
+  Forgot Password?
+ </button>
+
+ <form id="resetForm" class="hidden">
+  <label for="newPassword">New password</label>
+  <input id="newPassword" type="password"
+   minlength="6" required>
+  <button class="primary" type="submit">Update Password</button>
+ </form>
+
+ <p id="authMessage" class="message" role="status"></p>
+ <p id="accountStatus"></p>
+
+ <button id="logoutBtn" class="danger primary hidden"
+  type="button">Logout</button>
+</div>
+
+<!-- URL SHORTENER -->
+<div class="card" id="shortenerCard">
+ <h2>Shorten your URL</h2>
+
+ <form id="shortForm">
+  <label for="longUrl">Paste your long URL</label>
+  <input id="longUrl" type="url"
+   placeholder="https://example.com/your-link" required>
+
+  <label for="alias">Custom alias (optional)</label>
+  <input id="alias" type="text"
+   placeholder="my-link" maxlength="30"
+   pattern="[a-zA-Z0-9_-]+">
+
+  <button class="primary" id="submitBtn" type="submit">
+   Shorten URL
+  </button>
+ </form>
+
+ <div class="result" id="result">
+  <p>Your short link:</p>
+  <a id="shortLink" href="#" target="_blank"
+   rel="noopener noreferrer"></a>
+  <button class="copy primary" id="copyBtn" type="button">
+   Copy Link
   </button>
  </div>
 
- <div class="note">
-  HONEST © 2026 · Simple URL Management
+ <p class="message" id="message" role="status"></p>
+</div>
+
+<!-- LINK HISTORY -->
+<div class="card">
+ <div class="section-title">
+  <h2>Link History</h2>
+  <button class="secondary" id="refreshBtn">Refresh</button>
  </div>
 
+ <p class="stats" id="totalLinks">0 saved links</p>
+ <div id="historyList">
+  <div class="empty">Login to view your links.</div>
+ </div>
+</div>
+
+<div class="note">HONEST © 2026 · Simple URL Management</div>
 </div>
 
 <script>
-const form = document.getElementById("shortForm");
-const btn = document.getElementById("submitBtn");
-const message = document.getElementById("message");
-const result = document.getElementById("result");
-const shortLink = document.getElementById("shortLink");
-const historyList = document.getElementById("historyList");
+const SUPABASE_URL =
+ "https://eszxcijknskjmthvotgx.supabase.co";
 
-const STORAGE_KEY = "honest_link_history";
+const SUPABASE_KEY =
+ "sb_publishable_z2A424CjymZNvgf9XXmycw_Qm1vKHPc";
 
-function getHistory(){
- try{
-  return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
- }catch{
-  return [];
+const supabase = window.supabase.createClient(
+ SUPABASE_URL,
+ SUPABASE_KEY,
+ {
+  auth:{
+   persistSession:true,
+   autoRefreshToken:true,
+   detectSessionInUrl:true
+  }
  }
-}
+);
 
-function saveHistory(items){
- localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-}
+let currentSession = null;
+let authMode = "login";
 
-async function copyText(text){
- try{
-  await navigator.clipboard.writeText(text);
-  return true;
- }catch{
-  return false;
- }
-}
+const $ = id => document.getElementById(id);
 
 function safeLink(value){
  try{
-  const url = new URL(value);
-  return ["http:","https:"].includes(url.protocol) ? url.href : null;
+  const u = new URL(value);
+  return ["http:","https:"].includes(u.protocol) ? u.href : null;
  }catch{
   return null;
  }
 }
 
-async function loadHistory(){
- const items = getHistory();
+function showAuthMessage(text){
+ $("authMessage").textContent = text;
+}
 
- document.getElementById("totalLinks").textContent =
-  items.length + (items.length === 1 ? " saved link" : " saved links");
+function setMode(mode){
+ authMode = mode;
+ $("authTitle").textContent =
+  mode === "login" ? "Welcome to HONEST" : "Create your account";
+ $("authSubmit").textContent =
+  mode === "login" ? "Login" : "Create Account";
+ $("loginTab").className =
+  mode === "login" ? "active" : "secondary";
+ $("signupTab").className =
+  mode === "signup" ? "active" : "secondary";
+ showAuthMessage("");
+}
 
- historyList.replaceChildren();
+$("loginTab").addEventListener("click",()=>setMode("login"));
+$("signupTab").addEventListener("click",()=>setMode("signup"));
 
- if(!items.length){
-  const empty = document.createElement("div");
-  empty.className = "empty";
-  empty.textContent = "No links saved yet.";
-  historyList.appendChild(empty);
-  return;
- }
+function renderAuth(){
+ const loggedIn = !!currentSession;
 
- for(const item of items){
-  const card = document.createElement("div");
-  card.className = "history-item";
+ $("authForm").classList.toggle("hidden",loggedIn);
+ $("authTabs").classList.toggle("hidden",loggedIn);
+ $("forgotBtn").classList.toggle("hidden",loggedIn);
+ $("logoutBtn").classList.toggle("hidden",!loggedIn);
 
-  const heading = document.createElement("strong");
-  heading.textContent = item.code;
+ $("accountStatus").textContent = loggedIn
+  ? "Logged in: " + currentSession.user.email
+  : "Please log in or create an account.";
 
-  const original = document.createElement("p");
-  original.textContent = "Original: " + item.originalUrl;
+ $("shortForm").classList.toggle("hidden",!loggedIn);
 
-  const link = document.createElement("a");
-  link.href = item.shortUrl;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  link.textContent = item.shortUrl;
-
-  const stats = document.createElement("p");
-  stats.className = "stats";
-  stats.textContent = "Clicks: Loading...";
-
-  const actions = document.createElement("div");
-  actions.className = "history-actions";
-
-  const copyButton = document.createElement("button");
-  copyButton.className = "copy";
-  copyButton.textContent = "Copy";
-
-  copyButton.addEventListener("click", async()=>{
-   const ok = await copyText(item.shortUrl);
-   copyButton.textContent = ok ? "Copied!" : "Copy failed";
-  });
-
-  const openButton = document.createElement("button");
-  openButton.className = "secondary";
-  openButton.textContent = "Open Link";
-  openButton.addEventListener("click",()=>{
-   window.open(item.shortUrl,"_blank","noopener");
-  });
-
-  actions.append(copyButton,openButton);
-  card.append(heading,original,link,stats,actions);
-  historyList.appendChild(card);
-
-  try{
-   const response = await fetch(
-    "/api/stats/" + encodeURIComponent(item.code)
-   );
-
-   if(!response.ok) throw new Error("Stats unavailable");
-
-   const data = await response.json();
-   stats.textContent = "Clicks: " + data.clicks;
-  }catch{
-   stats.textContent = "Clicks: Unavailable";
-  }
+ if(!loggedIn){
+  $("historyList").innerHTML =
+   '<div class="empty">Login to view your links.</div>';
+  $("totalLinks").textContent = "0 saved links";
+ }else{
+  loadHistory();
  }
 }
 
-form.addEventListener("submit",async function(e){
+// SIGNUP AND LOGIN
+$("authForm").addEventListener("submit",async e=>{
  e.preventDefault();
+ showAuthMessage("");
 
- message.textContent = "";
- result.style.display = "none";
+ const email = $("email").value.trim();
+ const password = $("password").value;
 
- const url = document.getElementById("longUrl").value.trim();
- const alias = document.getElementById("alias").value.trim();
+ $("authSubmit").disabled = true;
 
- if(!safeLink(url)){
-  message.textContent = "Please enter a valid HTTP or HTTPS URL.";
+ try{
+  if(authMode === "signup"){
+   const {data,error} = await supabase.auth.signUp({
+    email,
+    password,
+    options:{
+     emailRedirectTo:window.location.origin
+    }
+   });
+
+   if(error) throw error;
+
+   if(!data.session){
+    showAuthMessage(
+     "Account created! Check your email and confirm your address before logging in."
+    );
+   }else{
+    showAuthMessage("Account created successfully!");
+   }
+
+  }else{
+   const {error} = await supabase.auth.signInWithPassword({
+    email,password
+   });
+
+   if(error) throw error;
+
+   showAuthMessage("Login successful!");
+  }
+
+ }catch(error){
+  showAuthMessage(error.message);
+ }finally{
+  $("authSubmit").disabled = false;
+ }
+});
+
+// FORGOT PASSWORD
+$("forgotBtn").addEventListener("click",async()=>{
+ const email = $("email").value.trim();
+
+ if(!email){
+  showAuthMessage("Enter your email address first.");
   return;
  }
 
- btn.disabled = true;
- btn.textContent = "Creating link...";
+ try{
+  const {error} = await supabase.auth.resetPasswordForEmail(
+   email,
+   {redirectTo:window.location.origin}
+  );
+
+  if(error) throw error;
+
+  showAuthMessage("Password reset email sent. Check your inbox.");
+
+ }catch(error){
+  showAuthMessage(error.message);
+ }
+});
+
+// PASSWORD UPDATE
+$("resetForm").addEventListener("submit",async e=>{
+ e.preventDefault();
 
  try{
-  const response = await fetch("/api/shorten",{
+  const {error} = await supabase.auth.updateUser({
+   password:$("newPassword").value
+  });
+
+  if(error) throw error;
+
+  $("resetForm").classList.add("hidden");
+  showAuthMessage("Password updated successfully.");
+
+ }catch(error){
+  showAuthMessage(error.message);
+ }
+});
+
+// LOGOUT
+$("logoutBtn").addEventListener("click",async()=>{
+ const {error} = await supabase.auth.signOut();
+
+ if(error){
+  showAuthMessage(error.message);
+ }
+});
+
+// SESSION CHANGES
+supabase.auth.onAuthStateChange((event,session)=>{
+ currentSession = session;
+ renderAuth();
+
+ if(event === "PASSWORD_RECOVERY"){
+  $("resetForm").classList.remove("hidden");
+  showAuthMessage("Enter your new password.");
+ }
+});
+
+async function apiFetch(path,options={}){
+ if(!currentSession){
+  throw new Error("Please log in first");
+ }
+
+ const {data:{session}} = await supabase.auth.getSession();
+
+ if(!session){
+  currentSession = null;
+  renderAuth();
+  throw new Error("Your session expired. Please log in again.");
+ }
+
+ currentSession = session;
+
+ const response = await fetch(path,{
+  ...options,
+  headers:{
+   "Content-Type":"application/json",
+   "Authorization":"Bearer "+session.access_token,
+   ...options.headers
+  }
+ });
+
+ const data = await response.json().catch(()=>({}));
+
+ if(!response.ok){
+  throw new Error(data.error || "Request failed");
+ }
+
+ return data;
+}
+
+// CREATE SHORT LINK
+$("shortForm").addEventListener("submit",async e=>{
+ e.preventDefault();
+
+ $("message").textContent = "";
+ $("result").style.display = "none";
+
+ const url = $("longUrl").value.trim();
+ const alias = $("alias").value.trim();
+
+ if(!safeLink(url)){
+  $("message").textContent = "Enter a valid HTTP or HTTPS URL.";
+  return;
+ }
+
+ $("submitBtn").disabled = true;
+ $("submitBtn").textContent = "Creating link...";
+
+ try{
+  const data = await apiFetch("/api/shorten",{
    method:"POST",
-   headers:{"Content-Type":"application/json"},
    body:JSON.stringify({url,alias})
   });
 
-  const data = await response.json();
+  const valid = safeLink(data.shortUrl);
 
-  if(!response.ok){
-   throw new Error(data.error || "Could not create link.");
-  }
+  if(!valid) throw new Error("Invalid short link received.");
 
-  const validShortUrl = safeLink(data.shortUrl);
+  $("shortLink").href = valid;
+  $("shortLink").textContent = valid;
+  $("result").style.display = "block";
 
-  if(!validShortUrl){
-   throw new Error("Invalid short link received.");
-  }
-
-  const code = new URL(validShortUrl).pathname.slice(1);
-
-  shortLink.href = validShortUrl;
-  shortLink.textContent = validShortUrl;
-  result.style.display = "block";
-
-  const items = getHistory();
-
-  items.unshift({
-   code,
-   originalUrl: url,
-   shortUrl: validShortUrl,
-   createdAt: new Date().toISOString()
-  });
-
-  saveHistory(items.slice(0,100));
-
-  document.getElementById("longUrl").value = "";
-  document.getElementById("alias").value = "";
+  $("longUrl").value = "";
+  $("alias").value = "";
 
   await loadHistory();
 
  }catch(error){
-  message.textContent = error.message;
+  $("message").textContent = error.message;
  }finally{
-  btn.disabled = false;
-  btn.textContent = "Shorten URL";
+  $("submitBtn").disabled = false;
+  $("submitBtn").textContent = "Shorten URL";
  }
 });
 
-document.getElementById("copyBtn").addEventListener("click",async()=>{
- const ok = await copyText(shortLink.href);
- document.getElementById("copyBtn").textContent =
-  ok ? "Copied!" : "Copy manually";
-});
+// LINK HISTORY
+async function loadHistory(){
+ if(!currentSession) return;
 
-document.getElementById("refreshBtn").addEventListener("click",loadHistory);
+ $("historyList").innerHTML =
+  '<div class="empty">Loading links...</div>';
 
-document.getElementById("clearBtn").addEventListener("click",()=>{
- if(!confirm("Clear all locally saved history? Database links will NOT be deleted.")){
-  return;
+ try{
+  const data = await apiFetch("/api/links");
+  const items = Array.isArray(data) ? data :
+   (data.links || []);
+
+  $("totalLinks").textContent =
+   items.length + (items.length === 1 ?
+   " saved link" : " saved links");
+
+  $("historyList").replaceChildren();
+
+  if(!items.length){
+   $("historyList").innerHTML =
+    '<div class="empty">No links saved yet.</div>';
+   return;
+  }
+
+  for(const item of items){
+   const code = item.code;
+   const originalUrl = item.original_url || item.originalUrl;
+   const shortUrl = window.location.origin + "/" + code;
+
+   const card = document.createElement("div");
+   card.className = "history-item";
+
+   const heading = document.createElement("strong");
+   heading.textContent = code;
+
+   const original = document.createElement("p");
+   original.textContent = "Original: " + originalUrl;
+
+   const link = document.createElement("a");
+   link.href = shortUrl;
+   link.target = "_blank";
+   link.rel = "noopener noreferrer";
+   link.textContent = shortUrl;
+
+   const stats = document.createElement("p");
+   stats.className = "stats";
+   stats.textContent = "Clicks: " +
+    (item.clicks ?? "Unavailable");
+
+   const actions = document.createElement("div");
+   actions.className = "history-actions";
+
+   const copyButton = document.createElement("button");
+   copyButton.className = "copy";
+   copyButton.textContent = "Copy";
+
+   copyButton.onclick = async()=>{
+    try{
+     await navigator.clipboard.writeText(shortUrl);
+     copyButton.textContent = "Copied!";
+    }catch{
+     copyButton.textContent = "Copy failed";
+    }
+   };
+
+   const openButton = document.createElement("button");
+   openButton.className = "secondary";
+   openButton.textContent = "Open Link";
+   openButton.onclick = ()=>window.open(
+    shortUrl,"_blank","noopener"
+   );
+
+   actions.append(copyButton,openButton);
+   card.append(heading,original,link,stats,actions);
+   $("historyList").appendChild(card);
+  }
+
+ }catch(error){
+  $("historyList").innerHTML =
+   '<div class="empty"></div>';
+  $("historyList").firstChild.textContent = error.message;
  }
- localStorage.removeItem(STORAGE_KEY);
- loadHistory();
+}
+
+$("copyBtn").addEventListener("click",async()=>{
+ try{
+  await navigator.clipboard.writeText($("shortLink").href);
+  $("copyBtn").textContent = "Copied!";
+ }catch{
+  $("copyBtn").textContent = "Copy manually";
+ }
 });
 
-loadHistory();
+$("refreshBtn").addEventListener("click",loadHistory);
+
+// INITIAL SESSION
+async function initialize(){
+ const {data,error} = await supabase.auth.getSession();
+
+ if(error){
+  showAuthMessage(error.message);
+ }
+
+ currentSession = data.session;
+ renderAuth();
+}
+
+initialize();
 </script>
 </body>
 </html>
